@@ -1,0 +1,81 @@
+# ═══════════════════════════════════════════════════════════════
+# NAE Platform Configuration (Model A)
+# ═══════════════════════════════════════════════════════════════
+#
+# Copy this file to config.yaml and edit to match your setup.
+#
+# NAE is a research and analysis tool. It does NOT provide
+# financial advice or trade recommendations. All trading
+# decisions are made solely by the user.
+#
+# ═══════════════════════════════════════════════════════════════
+
+nae:
+  # research_only — data fetching, analysis, and pattern detection
+  # backtest     — adds backtesting of user-defined strategies
+  # full         — adds user-controlled execution (requires execution_enabled)
+  mode: research_only
+
+  # Execution is OFF by default. You must explicitly enable it.
+  # By setting this to true, you accept full responsibility for
+  # all trades executed through NAE.
+  execution_enabled: false
+
+# ─── Broker Configuration ─────────────────────────────────────
+# NAE supports user-provided broker connections.
+# NAE does not manage your account or make trading decisions.
+
+broker:
+  # Supported: tradier, alpaca
+  name: null
+
+  # Your API key — never share this or commit it to version control
+  api_key: null
+
+  # API secret (required for Alpaca; not needed for Tradier)
+  api_secret: null
+
+  # true = paper/sandbox trading (no real money)
+  # false = live trading (REAL MONEY — use with extreme caution)
+  sandbox: true
+
+# ─── Research Settings ────────────────────────────────────────
+
+research:
+  data_sources:
+    - yahoo_finance            # Free delayed OHLCV data
+
+  # Your watchlist — add the symbols YOU want to research
+  assets: []
+  # Example:
+  # assets:
+  #   - SPY
+  #   - AAPL
+  #   - BTC-USD
+  #   - QQQ
+
+# ─── Backtesting Settings ────────────────────────────────────
+
+backtesting:
+  default_period_days: 365
+  output_format: csv           # csv | json
+  output_directory: ./reports
+
+# ─── Execution Settings (when enabled) ───────────────────────
+
+execution:
+  # Prompt for confirmation before every order (strongly recommended)
+  require_confirmation: true
+
+  # Maximum order value in USD — safety limit
+  # Adjust to YOUR risk tolerance
+  max_order_size_usd: 1000.0
+
+  # true = paper/simulated orders (no real money)
+  paper_mode: true
+
+# ─── Logging ──────────────────────────────────────────────────
+
+logging:
+  level: INFO                  # DEBUG | INFO | WARNING | ERROR
+  directory: ./logs

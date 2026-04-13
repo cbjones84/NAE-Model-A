@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nae-platform"
+version = "1.0.0"
+description = "AI-Assisted Trading Research Infrastructure — Your AI, Your Control, Your Privacy"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Proprietary"}
+authors = [
+    {name = "NAE Platform"},
+]
+keywords = ["trading", "research", "backtesting", "analysis", "infrastructure"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Private :: Do Not Upload",
+]
+
+dependencies = [
+    "click>=8.1",
+    "pyyaml>=6.0",
+    "yfinance>=0.2.30",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+monitoring = ["psutil>=5.9"]
+all = [
+    "psutil>=5.9",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.3",
+]
+
+[project.scripts]
+nae = "nae.cli.main:main"
+
+[tool.setuptools.packages.find]
+include = ["nae*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

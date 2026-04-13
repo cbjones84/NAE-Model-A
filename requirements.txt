@@ -1,0 +1,8 @@
+# NAE Platform — Core Dependencies
+click>=8.1
+pyyaml>=6.0
+yfinance>=0.2.30
+requests>=2.31
+
+# Optional: System monitoring
+# psutil>=5.9

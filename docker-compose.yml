@@ -1,0 +1,23 @@
+# NAE Platform — Docker Compose
+#
+# Usage:
+#   docker-compose run nae init          # Initialize workspace
+#   docker-compose run nae status        # Check system status
+#   docker-compose run nae research scan --asset SPY
+#   docker-compose run nae backtest run ./strategies/my_strategy.py --symbols SPY
+
+services:
+  nae:
+    build: .
+    container_name: nae_platform
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./strategies:/app/strategies
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+      - ./data:/app/data
+    environment:
+      - TRADIER_ACCOUNT_ID=${TRADIER_ACCOUNT_ID:-}
+    working_dir: /app
+    stdin_open: true
+    tty: true

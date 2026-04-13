@@ -1,0 +1,49 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Trained models (never ship alpha)
+*.pt
+*.pkl
+*.h5
+*.onnx
+models/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs & runtime data
+logs/
+*.log
+data/
+reports/
+
+# User config (template ships, user copy does not)
+config.yaml
+!config.example.yaml
+
+# Docker volumes
+redis_data/
