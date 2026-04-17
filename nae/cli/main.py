@@ -17,6 +17,8 @@ import logging
 from pathlib import Path
 
 from nae import __version__, __product__, __tagline__
+from nae.core import licensing as _lic
+from nae.core.license_keys import get_trusted_public_keys, has_any_trusted_key
 
 
 def _setup_logging(level: str = "INFO") -> None:
@@ -243,6 +245,13 @@ def research_correlations(assets: str, period: str):
     _setup_logging()
     from nae.agents.research_engine import ResearchEngine
     from nae.core.disclaimer import SHORT_DISCLAIMER
+    from nae.core.feature_gates import get_gates
+
+    try:
+        get_gates().require_feature("correlation_matrix")
+    except _lic.FeatureNotLicensedError as e:
+        click.echo(f"\n  [X] {e}", err=True)
+        sys.exit(2)
 
     symbols = [s.strip().upper() for s in assets.split(",")]
     engine = ResearchEngine()
@@ -388,6 +397,17 @@ def backtest_run(strategy_path: str, symbols: str, start_date, end_date, capital
 
     symbol_list = [s.strip().upper() for s in symbols.split(",")]
     validator = StrategyValidator()
+
+    if len(symbol_list) > 1:
+        from nae.core.feature_gates import get_gates
+        try:
+            get_gates().require_feature("backtest_multi_symbol")
+        except _lic.FeatureNotLicensedError as e:
+            click.echo(f"\n  [X] {e}", err=True)
+            click.echo(
+                "  Tip: run with a single --symbols value to use the free tier."
+            )
+            sys.exit(2)
 
     click.echo(f"\n  Running backtest: {strategy_path}")
     click.echo(f"  Symbols: {', '.join(symbol_list)}")
@@ -570,7 +590,189 @@ def config_path():
         click.echo("\n  No config file found. Run 'nae init' to create one.")
 
 
+# ── LICENSE ─────────────────────────────────────────────────────
+
+
+def _load_license_for_cli() -> _lic.VerifiedLicense:
+    """Runs every CLI command. Never crashes the CLI on soft errors —
+    hard errors (tampered signature, version mismatch) still propagate.
+    """
+    try:
+        return _lic.load_effective(
+            current_version=__version__,
+            public_keys=get_trusted_public_keys(),
+        )
+    except _lic.LicenseSignatureError as e:
+        click.echo(
+            f"\n  [X] License signature check failed: {e}\n"
+            f"    The license file at {_lic.get_license_file_path()} may have\n"
+            f"    been tampered with, or was issued by a different vendor.\n"
+            f"    Remove the file to continue on the free tier.",
+            err=True,
+        )
+        sys.exit(2)
+    except _lic.LicenseVersionMismatchError as e:
+        click.echo(
+            f"\n  [X] License/version mismatch: {e}\n"
+            f"    Upgrade or downgrade NAE, or obtain a license compatible\n"
+            f"    with version {__version__}.",
+            err=True,
+        )
+        sys.exit(2)
+
+
+def _attach_license_to_gates(v: _lic.VerifiedLicense) -> None:
+    """Attach the verified license to the FeatureGates singleton so
+    command handlers can call ``gates.require_feature(...)``.
+    """
+    from nae.core.feature_gates import get_gates
+    gates = get_gates()
+    gates.attach_license(v)
+
+
+@cli.group()
+def license():  # noqa: A001 - CLI command name; not the builtin
+    """View and manage your NAE Model A license."""
+    pass
+
+
+@license.command("show")
+def license_show():
+    """Display the current license status."""
+    v = _load_license_for_cli()
+    _attach_license_to_gates(v)
+    _print_license_block(v)
+
+
+@license.command("activate")
+@click.argument("license_file", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--dest",
+    "dest_path",
+    default=None,
+    help="Destination path for the activated license "
+    "(default: ~/.nae/license.nae).",
+)
+def license_activate(license_file: str, dest_path):
+    """Install a license file into the user's NAE directory.
+
+    This is an **offline** activation: we verify the signature locally
+    and, on success, copy the file into ``~/.nae/license.nae`` and
+    record the machine as an activation.
+    """
+    src = Path(license_file)
+
+    if not has_any_trusted_key():
+        click.echo(
+            "\n  [X] This build of NAE has no trusted license signing keys.\n"
+            "    No license can be verified. Either use a release build or\n"
+            "    set NAE_LICENSE_EXTRA_PUBLIC_KEYS for local testing.",
+            err=True,
+        )
+        sys.exit(2)
+
+    try:
+        lic = _lic.License.from_file(src)
+        lic.verify_signature(get_trusted_public_keys())
+        lic.verify_version(__version__)
+    except _lic.LicenseError as e:
+        click.echo(f"\n  [X] License rejected: {e}", err=True)
+        sys.exit(2)
+
+    dest = Path(dest_path) if dest_path else _lic.get_license_file_path()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+
+    machine_id = _lic.compute_machine_id()
+    _lic.record_activation(lic.payload.license_id, machine_id)
+
+    click.echo(f"\n  [OK] License activated: {lic.payload.license_id}")
+    click.echo(f"    Tier:       {lic.payload.tier}")
+    click.echo(f"    Expires:    {lic.payload.expires_at}")
+    click.echo(f"    Installed:  {dest}")
+    click.echo(f"    Machine ID: {machine_id}")
+
+
+@license.command("deactivate")
+@click.confirmation_option(prompt="Remove your license from this machine?")
+def license_deactivate():
+    """Remove this machine from the license's activation list and
+    delete the local license file.
+    """
+    license_path = _lic.get_license_file_path()
+    if not license_path.exists():
+        click.echo("\n  No license file installed — nothing to deactivate.")
+        return
+
+    try:
+        lic = _lic.License.from_file(license_path)
+    except _lic.LicenseError as e:
+        click.echo(f"\n  License file is unreadable ({e}); removing it anyway.")
+        license_path.unlink(missing_ok=True)
+        return
+
+    machine_id = _lic.compute_machine_id()
+    removed = _lic.deactivate_machine(lic.payload.license_id, machine_id)
+    license_path.unlink(missing_ok=True)
+
+    click.echo("\n  [OK] License removed from this machine.")
+    if removed:
+        click.echo(f"    Deactivated machine {machine_id} for "
+                   f"{lic.payload.license_id}.")
+
+
+@license.command("machine-id")
+def license_machine_id():
+    """Print the machine id used for license binding."""
+    click.echo(_lic.compute_machine_id())
+
+
+def _print_license_block(v: _lic.VerifiedLicense) -> None:
+    # ASCII only in this block so the output renders cleanly on Windows
+    # consoles that default to cp1252. The rest of the CLI uses Unicode
+    # glyphs in some places; when those paths get touched the same
+    # treatment should be applied.
+    click.echo("\n  License status")
+    click.echo("  " + "-" * 50)
+    click.echo(f"  Effective tier:   {v.effective_tier}")
+    lic = v.license
+    if lic.payload.license_id == "FREE":
+        click.echo("  License file:     (none)")
+        click.echo(f"  Path checked:     {_lic.get_license_file_path()}")
+    else:
+        click.echo(f"  License id:       {lic.payload.license_id}")
+        click.echo(f"  Customer:         {lic.payload.customer_email}")
+        click.echo(f"  Licensed tier:    {lic.payload.tier}")
+        click.echo(f"  Issued at:        {lic.payload.issued_at}")
+        click.echo(f"  Expires at:       {lic.payload.expires_at}")
+        click.echo(f"  Max machines:     {lic.payload.max_machines}")
+        click.echo(f"  Key id:           {lic.key_id}")
+        if lic.payload.version_constraint:
+            click.echo(f"  Version range:    {lic.payload.version_constraint}")
+
+    feats = sorted(
+        set(
+            _lic.TIER_FEATURES.get(v.effective_tier, ())
+        ).union(lic.payload.features if lic.payload.license_id != "FREE" else ())
+    )
+    click.echo(f"  Features:         {', '.join(feats) if feats else '(none)'}")
+    if v.warnings:
+        click.echo("\n  Warnings:")
+        for w in v.warnings:
+            click.echo(f"    ! {w}")
+    click.echo("")
+
+
+# ── ENTRY POINT ─────────────────────────────────────────────────
+
+
 def main():
+    # Run the license check once at startup and attach the result to
+    # the FeatureGates singleton. Soft failures are handled internally
+    # (fall back to free tier); hard failures exit the process with a
+    # descriptive error.
+    v = _load_license_for_cli()
+    _attach_license_to_gates(v)
     cli()
 
 

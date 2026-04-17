@@ -47,3 +47,15 @@ config.yaml
 
 # Docker volumes
 redis_data/
+
+# License signing material — NEVER commit.
+# These are also enforced by scripts/compliance_audit.py.
+tools/issuer/keys/
+tools/issuer/secrets/
+tools/issuer/*.private
+tools/issuer/*.pem
+tools/issuer/*.key
+*signing_key*
+*.private
+modela_private.key
+

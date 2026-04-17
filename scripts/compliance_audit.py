@@ -260,6 +260,70 @@ def check_legal_docs(result: AuditResult) -> None:
             result.fail(f"{doc} missing or empty")
 
 
+def check_no_private_keys(result: AuditResult) -> None:
+    """Ensure no license signing private keys are committed.
+
+    Checks two things:
+      1. Files under tools/issuer/ that match the gitignore patterns
+         (*.private, *.pem, *.key, keys/, secrets/) must not be tracked
+         by git — but since we can't call git here safely across
+         platforms, we settle for: the raw files must not exist in the
+         working tree in a way that'd be committed.
+      2. Any 32-byte binary file that looks like a raw Ed25519 key
+         anywhere in the repo (excluding .git) is flagged.
+    """
+    suspicious: List[str] = []
+
+    skip_dirs = {".git", "__pycache__", "node_modules", ".venv", "venv", "env"}
+
+    # Rule 1: known private-key filename patterns.
+    banned_patterns = (".private", ".pem", ".key")
+    banned_exact = ("modela_private.key",)
+    banned_dirs = {"keys", "secrets"}
+
+    for path in REPO_ROOT.rglob("*"):
+        if any(part in skip_dirs for part in path.parts):
+            continue
+        if path.is_dir():
+            if path.name in banned_dirs:
+                suspicious.append(
+                    f"{path.relative_to(REPO_ROOT)}/ — banned directory name"
+                )
+            continue
+        name = path.name.lower()
+        if any(name.endswith(suf) for suf in banned_patterns):
+            suspicious.append(
+                f"{path.relative_to(REPO_ROOT)} — banned private-key extension"
+            )
+            continue
+        if name in banned_exact:
+            suspicious.append(
+                f"{path.relative_to(REPO_ROOT)} — banned private-key filename"
+            )
+            continue
+
+        # Rule 2: raw 32-byte files could be Ed25519 private keys.
+        try:
+            if path.stat().st_size == 32 and path.suffix not in {".py", ".md", ".txt", ".json", ".yaml", ".yml"}:
+                # Heuristic only — warn rather than fail, because a 32-byte
+                # non-text file with no suffix is at minimum worth a look.
+                with path.open("rb") as f:
+                    data = f.read(32)
+                if all(b < 256 for b in data) and data != b"\x00" * 32:
+                    result.warn(
+                        f"{path.relative_to(REPO_ROOT)} is exactly 32 bytes — "
+                        f"if this is a signing key, remove it"
+                    )
+        except OSError:
+            continue
+
+    if suspicious:
+        for s in suspicious:
+            result.fail(f"Private key material committed: {s}")
+    else:
+        result.ok("No license signing private keys in repo")
+
+
 def check_examples_have_disclaimers(result: AuditResult) -> None:
     """Verify all example strategies have disclaimer headers."""
     examples_dir = REPO_ROOT / "examples"
@@ -290,6 +354,7 @@ def main():
     check_no_personal_targets(result)
     check_legal_docs(result)
     check_examples_have_disclaimers(result)
+    check_no_private_keys(result)
 
     result.report()
 

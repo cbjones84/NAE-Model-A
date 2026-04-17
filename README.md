@@ -99,6 +99,17 @@ nae config show                       # Display current config
 nae config path                       # Show config file location
 ```
 
+### License
+```bash
+nae license show                      # Show current tier and expiry
+nae license activate ./license.nae    # Install a license file
+nae license deactivate                # Remove license from this machine
+nae license machine-id                # Print this machine's binding id
+```
+
+See [`docs/licensing.md`](docs/licensing.md) for the full licensing
+model (tiers, feature map, offline verification, and rotation).
+
 ## Configuration
 
 Copy `config.example.yaml` to `config.yaml` and edit:
