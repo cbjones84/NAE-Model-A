@@ -61,7 +61,8 @@ logger = logging.getLogger("nae.licensing.keys")
 # unsigned / untrusted and falls back to the free tier — which is the
 # safe default.
 _PUBLIC_KEYS_B64: Dict[str, str] = {
-    # "modela-2026-01": "BASE64_OF_32_BYTE_ED25519_PUBLIC_KEY",
+    #  _PUBLIC_KEYS_B64:
+    "modela-2026-01": "FI0x2w4s1JTi31NzjkhWvSF1l2CdDgh2F2Hp/wsu/FQ=",
 }
 
 
