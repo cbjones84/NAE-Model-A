@@ -152,10 +152,16 @@ def position_size(data: dict, capital: float) -> int:
         # Load module
         try:
             spec = importlib.util.spec_from_file_location("user_strategy", str(path))
+            if spec is None or spec.loader is None:
+                raise StrategyValidationError(
+                    f"Could not build import spec for strategy file: {path}"
+                )
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
+        except StrategyValidationError:
+            raise
         except Exception as e:
-            raise StrategyValidationError(f"Failed to load strategy: {e}")
+            raise StrategyValidationError(f"Failed to load strategy: {e}") from e
 
         result = {
             "file": str(path),
@@ -244,6 +250,10 @@ def position_size(data: dict, capital: float) -> int:
 
         # Load the strategy module
         spec = importlib.util.spec_from_file_location("user_strategy", strategy_path)
+        if spec is None or spec.loader is None:
+            raise StrategyValidationError(
+                f"Could not build import spec for strategy file: {strategy_path}"
+            )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 

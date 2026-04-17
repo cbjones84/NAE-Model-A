@@ -6,7 +6,7 @@ No code path can bypass these gates without the user explicitly
 changing their configuration file.
 """
 
-import os
+import copy
 import yaml
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -54,7 +54,12 @@ class FeatureGates:
 
     def __init__(self, config_path: Optional[str] = None):
         self._config_path = config_path or self._find_config()
-        self._config: Dict[str, Any] = dict(_DEFAULT_CONFIG)
+        # Deep-copy the defaults so per-instance mutations (via _deep_merge)
+        # cannot leak back into the module-level template. A shallow dict()
+        # copy would share nested dicts and corrupt later FeatureGates()
+        # instances — a real bug the singleton masked in normal usage but
+        # that surfaces under tests or when multiple gates coexist.
+        self._config: Dict[str, Any] = copy.deepcopy(_DEFAULT_CONFIG)
         if self._config_path and Path(self._config_path).exists():
             self._load()
 
@@ -95,7 +100,8 @@ class FeatureGates:
 
     @property
     def config(self) -> Dict[str, Any]:
-        return dict(self._config)
+        # Deep copy so callers cannot mutate internal gate state by accident.
+        return copy.deepcopy(self._config)
 
     # ── Gate checks ─────────────────────────────────────────────
 

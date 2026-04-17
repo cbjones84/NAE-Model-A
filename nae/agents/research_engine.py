@@ -90,11 +90,11 @@ class ResearchEngine:
             try:
                 import yfinance as yf
                 self._yf = yf
-            except ImportError:
+            except ImportError as e:
                 raise ImportError(
                     "yfinance is required for live data. "
                     "Install with: pip install yfinance"
-                )
+                ) from e
         return self._yf
 
     def fetch_market_data(

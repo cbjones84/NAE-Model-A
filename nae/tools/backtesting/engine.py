@@ -212,8 +212,21 @@ class SimpleBacktestEngine:
             std_ret = statistics.stdev(daily_returns)
             sharpe = (mean_ret / std_ret) * (252 ** 0.5) if std_ret > 0 else 0
             downside = [r for r in daily_returns if r < 0]
-            downside_std = statistics.stdev(downside) if len(downside) > 1 else 0.0001
-            sortino = (mean_ret / downside_std) * (252 ** 0.5) if downside_std > 0 else 0
+            # If there aren't enough negative returns to form a real downside
+            # stdev, report Sortino as 0 rather than manufacturing a 0.0001
+            # denominator that produces a wildly inflated ratio (misleading
+            # to research users). We intentionally do NOT fall back to the
+            # overall stdev here because that would make Sortino numerically
+            # identical to Sharpe.
+            if len(downside) > 1:
+                downside_std = statistics.stdev(downside)
+                sortino = (
+                    (mean_ret / downside_std) * (252 ** 0.5)
+                    if downside_std > 0
+                    else 0.0
+                )
+            else:
+                sortino = 0.0
             annual_vol = std_ret * (252 ** 0.5) * 100
         else:
             sharpe = sortino = annual_vol = 0.0
@@ -251,8 +264,10 @@ class SimpleBacktestEngine:
         """Fetch historical data via yfinance."""
         try:
             import yfinance as yf
-        except ImportError:
-            raise ImportError("yfinance is required for backtesting: pip install yfinance")
+        except ImportError as e:
+            raise ImportError(
+                "yfinance is required for backtesting: pip install yfinance"
+            ) from e
 
         kwargs: Dict[str, Any] = {}
         if start_date:
