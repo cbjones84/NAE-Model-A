@@ -1,0 +1,9 @@
+# Signing material — NEVER commit these.
+# The compliance_audit.py enforces this too (see check_no_private_keys).
+*.private
+*private_key*
+*signing_key*
+*.pem
+*.key
+keys/
+secrets/

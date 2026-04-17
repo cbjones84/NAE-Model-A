@@ -6,10 +6,13 @@ No code path can bypass these gates without the user explicitly
 changing their configuration file.
 """
 
-import os
+import copy
 import yaml
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+if TYPE_CHECKING:
+    from nae.core.licensing import VerifiedLicense
 
 
 _DEFAULT_CONFIG = {
@@ -54,7 +57,16 @@ class FeatureGates:
 
     def __init__(self, config_path: Optional[str] = None):
         self._config_path = config_path or self._find_config()
-        self._config: Dict[str, Any] = dict(_DEFAULT_CONFIG)
+        # Deep-copy the defaults so per-instance mutations (via _deep_merge)
+        # cannot leak back into the module-level template. A shallow dict()
+        # copy would share nested dicts and corrupt later FeatureGates()
+        # instances — a real bug the singleton masked in normal usage but
+        # that surfaces under tests or when multiple gates coexist.
+        self._config: Dict[str, Any] = copy.deepcopy(_DEFAULT_CONFIG)
+        # Licensing is attached lazily by the CLI startup path. Default to
+        # None so that code paths which don't care about licensing keep
+        # working (unit tests, direct library usage, etc.).
+        self._license: Optional["VerifiedLicense"] = None
         if self._config_path and Path(self._config_path).exists():
             self._load()
 
@@ -95,7 +107,8 @@ class FeatureGates:
 
     @property
     def config(self) -> Dict[str, Any]:
-        return dict(self._config)
+        # Deep copy so callers cannot mutate internal gate state by accident.
+        return copy.deepcopy(self._config)
 
     # ── Gate checks ─────────────────────────────────────────────
 
@@ -143,6 +156,59 @@ class FeatureGates:
         print(f"{'=' * 60}")
         response = input("  Type 'yes' to confirm: ").strip().lower()
         return response in ("yes", "y")
+
+    # ── Licensing integration ─────────────────────────────────────
+    #
+    # IMPORTANT DESIGN NOTE
+    # ---------------------
+    # Licensing gates *paid features* (walk-forward, benchmarks, etc.).
+    # It MUST NOT influence `execution_allowed`. Execution is controlled
+    # exclusively by the user's config.yaml + require_execution(). This
+    # separation is deliberate: even a totally broken license subsystem
+    # must never be able to flip execution on or off. Do not couple them.
+
+    def attach_license(self, license_obj: Optional["VerifiedLicense"]) -> None:
+        """Attach a verified license to this gate instance. Passing
+        ``None`` explicitly clears any previously attached license.
+        """
+        self._license = license_obj
+
+    @property
+    def license(self) -> Optional["VerifiedLicense"]:
+        return self._license
+
+    @property
+    def tier(self) -> str:
+        """Current effective tier. Defaults to ``free`` if no license
+        has been attached yet.
+        """
+        if self._license is None:
+            from nae.core.licensing import FREE_TIER
+            return FREE_TIER
+        return self._license.effective_tier
+
+    def feature_allowed(self, feature_name: str) -> bool:
+        """Check whether the current tier permits ``feature_name``.
+
+        If no license is attached, delegate to the free-tier feature
+        list so that callers don't need to special-case ``None``.
+        """
+        from nae.core.licensing import FREE_TIER, TIER_FEATURES
+        if self._license is None:
+            return feature_name in TIER_FEATURES[FREE_TIER]
+        return self._license.allows_feature(feature_name)
+
+    def require_feature(self, feature_name: str) -> None:
+        """Raise :class:`FeatureNotLicensedError` if the current tier
+        does not include ``feature_name``.
+        """
+        from nae.core.licensing import FeatureNotLicensedError
+        if not self.feature_allowed(feature_name):
+            raise FeatureNotLicensedError(
+                f"Feature {feature_name!r} is not included in the {self.tier} "
+                f"tier. Run 'nae license' to see your tier, or upgrade at "
+                f"https://nae.platform/pricing (contact support for details)."
+            )
 
 
 _gates: Optional[FeatureGates] = None
