@@ -644,6 +644,77 @@ def license_show():
     _print_license_block(v)
 
 
+@license.command("verify")
+@click.argument("license_file", type=click.Path(exists=True, dir_okay=False))
+def license_verify(license_file: str):
+    """Dry-run verify a .nae file without installing or activating it.
+
+    Useful during issuance (see ``docs/issuance-sop.md`` step 5) and
+    when a customer asks "is my license still OK?". This command:
+
+    - reads the file at ``LICENSE_FILE``,
+    - checks its signature against the trusted public keys,
+    - checks its version constraint against this product version,
+    - reports expiry + grace-period status,
+
+    and deliberately does **not** copy the file into the NAE
+    directory, does **not** record an activation, and does **not**
+    touch the activation store at all. A failed verification exits
+    with code 2.
+    """
+    p = Path(license_file)
+
+    if not has_any_trusted_key():
+        click.echo(
+            "\n  [X] This build has no trusted license signing keys.\n"
+            "      Add a public key to nae/core/license_keys.py first,\n"
+            "      or set NAE_LICENSE_EXTRA_PUBLIC_KEYS for local testing.",
+            err=True,
+        )
+        sys.exit(2)
+
+    try:
+        lic = _lic.License.from_file(p)
+        lic.verify_signature(get_trusted_public_keys())
+        lic.verify_version(__version__)
+    except _lic.LicenseError as e:
+        click.echo(f"\n  [X] Verification failed: {e}", err=True)
+        sys.exit(2)
+
+    expired = lic.is_expired()
+    in_grace = lic.is_in_grace_period()
+
+    click.echo("\n  [OK] License file verified")
+    click.echo("  " + "-" * 50)
+    click.echo(f"  Path:          {p}")
+    click.echo(f"  License id:    {lic.payload.license_id}")
+    click.echo(f"  Customer:      {lic.payload.customer_email}")
+    if lic.payload.customer_name:
+        click.echo(f"  Customer name: {lic.payload.customer_name}")
+    click.echo(f"  Tier:          {lic.payload.tier}")
+    click.echo(f"  Issued at:     {lic.payload.issued_at}")
+    click.echo(f"  Expires at:    {lic.payload.expires_at}")
+    click.echo(f"  Expired:       {'yes' if expired else 'no'}")
+    click.echo(f"  In grace:      {'yes' if in_grace else 'no'}")
+    click.echo(f"  Max machines:  {lic.payload.max_machines}")
+    click.echo(f"  Key id:        {lic.key_id}")
+    if lic.payload.version_constraint:
+        click.echo(f"  Version range: {lic.payload.version_constraint}")
+    if lic.payload.features:
+        click.echo(f"  Extra feats:   {', '.join(lic.payload.features)}")
+    click.echo("")
+
+    # If the license is expired well past grace, flag it visibly but
+    # do not exit non-zero — the signature is still valid, the
+    # customer just needs a renewal. Exit 2 is reserved for hard
+    # verification failures.
+    if expired and not in_grace:
+        click.echo(
+            "  Note: this license is expired beyond the grace window.\n"
+            "        Activating it would result in free-tier access."
+        )
+
+
 @license.command("activate")
 @click.argument("license_file", type=click.Path(exists=True, dir_okay=False))
 @click.option(

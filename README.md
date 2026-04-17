@@ -102,6 +102,7 @@ nae config path                       # Show config file location
 ### License
 ```bash
 nae license show                      # Show current tier and expiry
+nae license verify ./license.nae      # Dry-run check a file without activating
 nae license activate ./license.nae    # Install a license file
 nae license deactivate                # Remove license from this machine
 nae license machine-id                # Print this machine's binding id

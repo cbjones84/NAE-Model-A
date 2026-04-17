@@ -89,3 +89,7 @@ This end of the pipeline (minting licenses, rotating keys) lives in
 [`tools/issuer/README.md`](../tools/issuer/README.md). It is only used
 on the vendor's machine; the private signing key never touches this
 repo.
+
+For the step-by-step workflow used on every new customer (intake,
+issuance, verification, delivery, ledger, renewals, and the emergency
+key-leak runbook), see [`docs/issuance-sop.md`](./issuance-sop.md).
