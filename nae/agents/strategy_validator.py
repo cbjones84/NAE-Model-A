@@ -140,61 +140,17 @@ def position_size(data: dict, capital: float) -> int:
         """
         Validate a strategy file has required hooks and valid structure.
 
-        Returns validation result dict.
+        Static analysis only — does not execute the file.
         """
+        from nae.strategies.static_check import static_validate_strategy
+
         path = Path(filepath)
-        if not path.exists():
-            raise StrategyValidationError(f"Strategy file not found: {filepath}")
-
-        if not path.suffix == ".py":
-            raise StrategyValidationError("Strategy files must be Python (.py)")
-
-        # Load module
         try:
-            spec = importlib.util.spec_from_file_location("user_strategy", str(path))
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-        except Exception as e:
-            raise StrategyValidationError(f"Failed to load strategy: {e}")
+            result = static_validate_strategy(path)
+        except ValueError as e:
+            raise StrategyValidationError(str(e)) from e
 
-        result = {
-            "file": str(path),
-            "valid": True,
-            "hooks_found": [],
-            "hooks_missing": [],
-            "warnings": [],
-            "validated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        }
-
-        # Check required hooks
-        for hook in REQUIRED_STRATEGY_HOOKS:
-            if hasattr(module, hook) and callable(getattr(module, hook)):
-                result["hooks_found"].append(hook)
-            else:
-                result["hooks_missing"].append(hook)
-                result["valid"] = False
-
-        # Check optional hooks
-        for hook in OPTIONAL_STRATEGY_HOOKS:
-            if hasattr(module, hook) and callable(getattr(module, hook)):
-                result["hooks_found"].append(hook)
-
-        # Check for PARAMS
-        if hasattr(module, "PARAMS") and isinstance(module.PARAMS, dict):
-            result["parameters"] = module.PARAMS
-        else:
-            result["warnings"].append("No PARAMS dict found — strategy has no configurable parameters")
-
-        # Warn if hooks return hardcoded values
-        import inspect
-        for hook in ["should_enter", "should_exit"]:
-            if hasattr(module, hook):
-                source = inspect.getsource(getattr(module, hook))
-                if source.strip().endswith("return False") or source.strip().endswith("return True"):
-                    result["warnings"].append(
-                        f"'{hook}' appears to return a hardcoded value — "
-                        f"implement your own logic"
-                    )
+        result["validated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
         # Register
         name = path.stem
@@ -235,14 +191,14 @@ def position_size(data: dict, capital: float) -> int:
 
         Returns raw backtest results — the user interprets them.
         """
-        # Validate first
+        # Validate first (static, no execution)
         validation = self.validate_strategy(strategy_path)
         if not validation["valid"]:
             raise StrategyValidationError(
                 f"Strategy failed validation: {validation['hooks_missing']}"
             )
 
-        # Load the strategy module
+        # Load the strategy module for backtest execution only
         spec = importlib.util.spec_from_file_location("user_strategy", strategy_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
