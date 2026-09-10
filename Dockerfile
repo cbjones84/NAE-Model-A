@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 LABEL maintainer="NAE Platform"
-LABEL description="NAE Platform — AI-Assisted Trading Research Infrastructure"
+LABEL description="NAE Platform — Trading Research Toolkit"
 
 WORKDIR /app
 

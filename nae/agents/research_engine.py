@@ -1,9 +1,10 @@
 """
-NAE Research Engine (derived from Ralph architecture)
+NAE Research Engine
 
-Provides AI-assisted market research and data analysis.
-All output is raw research data — no trade recommendations,
-no signals, no "best" or "recommended" labels.
+Statistical market research and data analysis (Yahoo Finance OHLCV by
+default; CSV import for user-provided files). All output is raw research
+data — no trade recommendations, no signals, no "best" or "recommended"
+labels.
 
 The user interprets all results and makes their own decisions.
 """
@@ -63,7 +64,7 @@ class ResearchReport:
 
 class ResearchEngine:
     """
-    AI-assisted market research engine.
+    Statistical market research engine.
 
     Capabilities:
     - Fetch and normalize OHLCV data (via yfinance or user-imported CSV)
@@ -72,6 +73,7 @@ class ResearchEngine:
     - Generate structured research reports (JSON/CSV)
 
     This engine does NOT:
+    - Use an LLM or trained model
     - Generate trade signals or recommendations
     - Score strategies by "profitability"
     - Suggest entry/exit points

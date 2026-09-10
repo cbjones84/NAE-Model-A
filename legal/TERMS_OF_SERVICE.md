@@ -89,8 +89,12 @@ to any trading losses, regulatory actions, or third-party claims.
 
 ## 8. Data and Privacy
 
-- NAE is self-hosted software. Your data remains on your infrastructure.
-- NAE does not collect, transmit, or store user data on external servers.
+- NAE is self-hosted software. The application does not operate a NAE cloud
+  backend and does not send product telemetry.
+- Default live market data is fetched from **Yahoo Finance** (third party).
+  CSV import does not require that network call.
+- If you enable execution, order instructions and API credentials are sent
+  to **your configured broker** (Tradier or Alpaca), not to NAE.
 - You are responsible for securing your own API keys, credentials, and data.
 
 ## 9. Intellectual Property

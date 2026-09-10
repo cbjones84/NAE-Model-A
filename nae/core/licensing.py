@@ -10,11 +10,13 @@ Design
   the product (see ``nae.core.license_keys``). Only the vendor holds the
   private key; customers cannot forge licenses.
 
-- Licensing gates *feature tiers* (free / pro / team) and product
-  expiry. Licensing **does not** control broker execution — that is
-  still 100% driven by ``nae.core.feature_gates.FeatureGates`` and the
-  user's ``config.yaml``. A broken / missing license can never
-  accidentally enable execution.
+- Licensing gates *implemented* feature tiers (free / pro / team) and
+  product expiry. Names such as walk-forward or Monte Carlo are
+  **not implemented** and are listed in ``UNIMPLEMENTED_FEATURES``.
+  Licensing **does not** control broker execution — that is still 100%
+  driven by ``nae.core.feature_gates.FeatureGates`` and the user's
+  ``config.yaml`` (mode + execution_enabled + broker). A broken /
+  missing license can never accidentally enable execution.
 
 - Missing or invalid license → the product falls back to the ``free``
   tier rather than refusing to start. This is deliberate: a research
@@ -88,28 +90,31 @@ FREE_TIER_FEATURES: Tuple[str, ...] = (
     "status",
 )
 
+# Features that are actually implemented and gated in this codebase.
+PRO_TIER_FEATURES: Tuple[str, ...] = FREE_TIER_FEATURES + (
+    "backtest_multi_symbol",
+    "correlation_matrix",
+    "regime_detection_full",
+)
+
+# Team currently has no extra implemented capabilities beyond Pro.
 TIER_FEATURES: Dict[str, Tuple[str, ...]] = {
     FREE_TIER: FREE_TIER_FEATURES,
-    PRO_TIER: FREE_TIER_FEATURES + (
-        "backtest_multi_symbol",
-        "walkforward",
-        "benchmarks",
-        "monte_carlo",
-        "correlation_matrix",
-        "regime_detection_full",
-    ),
-    TEAM_TIER: FREE_TIER_FEATURES + (
-        "backtest_multi_symbol",
-        "walkforward",
-        "benchmarks",
-        "monte_carlo",
-        "correlation_matrix",
-        "regime_detection_full",
-        "structured_json_logs",
-        "offline_docker_image",
-        "team_seats",
-    ),
+    PRO_TIER: PRO_TIER_FEATURES,
+    TEAM_TIER: PRO_TIER_FEATURES,
 }
+
+# Reserved names from earlier docs / license payloads. They are NOT
+# granted by any tier and have no implementation. require_feature()
+# raises NotImplementedError rather than pretending they exist.
+UNIMPLEMENTED_FEATURES: Tuple[str, ...] = (
+    "walkforward",
+    "benchmarks",
+    "monte_carlo",
+    "structured_json_logs",
+    "offline_docker_image",
+    "team_seats",
+)
 
 
 # ── Exceptions ───────────────────────────────────────────────────────
@@ -372,6 +377,10 @@ class VerifiedLicense:
         )
 
     def require_feature(self, feature: str) -> None:
+        if feature in UNIMPLEMENTED_FEATURES:
+            raise NotImplementedError(
+                f"Feature {feature!r} is not implemented in this version of NAE."
+            )
         if not self.allows_feature(feature):
             raise FeatureNotLicensedError(
                 f"Feature {feature!r} requires a higher tier. "

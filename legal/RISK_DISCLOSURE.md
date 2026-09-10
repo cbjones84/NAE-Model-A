@@ -48,8 +48,8 @@ Historical backtest results are simulations based on past data. They:
 - May be subject to look-ahead bias, survivorship bias, or data errors
 - Do **NOT** include all transaction costs, slippage, or market impact
 
-### 7. AI and Algorithmic Analysis
-AI-generated analysis and pattern detection:
+### 7. Algorithmic Analysis
+Statistical analysis, heuristics, and pattern detection:
 - Are **NOT** guarantees of accuracy
 - May produce false positives or false negatives
 - Should **NOT** be the sole basis for investment decisions

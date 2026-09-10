@@ -276,6 +276,13 @@ def test_version_constraint_none_passes(isolated_nae_dir):
 # ── Tiers & features ─────────────────────────────────────────────────
 
 
+def test_unimplemented_features_are_not_granted_by_any_tier():
+    unimplemented = set(L.UNIMPLEMENTED_FEATURES)
+    for tier, feats in L.TIER_FEATURES.items():
+        overlap = unimplemented.intersection(feats)
+        assert not overlap, f"{tier} still grants unimplemented {overlap}"
+
+
 def test_free_tier_feature_list_is_subset_of_pro():
     free = set(L.TIER_FEATURES[L.FREE_TIER])
     pro = set(L.TIER_FEATURES[L.PRO_TIER])
@@ -284,14 +291,16 @@ def test_free_tier_feature_list_is_subset_of_pro():
     assert pro.issubset(team)
 
 
-def test_pro_license_grants_multi_symbol_but_not_team_features():
+def test_pro_license_grants_multi_symbol_but_not_unimplemented():
     priv, pub = _keypair()
     env = _sign_license(priv, "k1", tier=L.PRO_TIER)
     lic = L.License.from_dict(env)
     lic.verify_signature({"k1": pub})
     assert lic.allows_feature("backtest_multi_symbol") is True
-    assert lic.allows_feature("walkforward") is True
-    assert lic.allows_feature("structured_json_logs") is False
+    assert lic.allows_feature("correlation_matrix") is True
+    assert lic.allows_feature("regime_detection_full") is True
+    assert lic.allows_feature("walkforward") is False
+    assert "walkforward" in L.UNIMPLEMENTED_FEATURES
 
 
 def test_extra_license_features_are_additive():
@@ -393,6 +402,7 @@ def test_feature_gates_defaults_to_free_tier(isolated_nae_dir):
     g = FeatureGates(config_path=None)
     assert g.tier == L.FREE_TIER
     assert g.feature_allowed("research_basic") is True
+    assert g.feature_allowed("correlation_matrix") is False
     assert g.feature_allowed("walkforward") is False
 
 
@@ -406,14 +416,16 @@ def test_feature_gates_with_pro_license_unlocks_paid_features(isolated_nae_dir):
     g.attach_license(v)
 
     assert g.tier == L.PRO_TIER
-    assert g.feature_allowed("walkforward") is True
-    g.require_feature("walkforward")  # should not raise
+    assert g.feature_allowed("correlation_matrix") is True
+    g.require_feature("correlation_matrix")  # should not raise
+    with pytest.raises(NotImplementedError, match="not implemented"):
+        g.require_feature("walkforward")
 
 
 def test_feature_gates_require_feature_raises_on_missing_tier(isolated_nae_dir):
     g = FeatureGates(config_path=None)
     with pytest.raises(L.FeatureNotLicensedError):
-        g.require_feature("walkforward")
+        g.require_feature("correlation_matrix")
 
 
 # ── The critical invariant ──────────────────────────────────────────

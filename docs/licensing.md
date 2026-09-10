@@ -7,26 +7,31 @@ our servers are down.
 
 ## Tiers & features
 
-| Feature                     | Free | Pro | Team |
-|-----------------------------|:----:|:---:|:----:|
-| Research reports            |  ✓   |  ✓  |  ✓   |
-| CSV import                  |  ✓   |  ✓  |  ✓   |
-| Single-symbol backtests     |  ✓   |  ✓  |  ✓   |
-| Multi-symbol backtests      |      |  ✓  |  ✓   |
-| Correlation matrix          |      |  ✓  |  ✓   |
-| Walk-forward analysis       |      |  ✓  |  ✓   |
-| Benchmark comparison        |      |  ✓  |  ✓   |
-| Monte Carlo bootstrap       |      |  ✓  |  ✓   |
-| Full regime detection       |      |  ✓  |  ✓   |
-| Structured JSON logs        |      |     |  ✓   |
-| Offline Docker image        |      |     |  ✓   |
-| Team seats                  |      |     |  ✓   |
+Only **implemented** capabilities are licensed. A Pro/Team license does not
+unlock software that is not in this repository.
+
+| Feature                     | Free | Pro | Team | Status |
+|-----------------------------|:----:|:---:|:----:|--------|
+| Research reports            |  ✓   |  ✓  |  ✓   | implemented |
+| CSV import (`nae research import`) |  ✓   |  ✓  |  ✓   | implemented |
+| Single-symbol backtests     |  ✓   |  ✓  |  ✓   | implemented (`mode` must be `backtest` or `full`) |
+| Multi-symbol backtests      |      |  ✓  |  ✓   | implemented |
+| Correlation matrix          |      |  ✓  |  ✓   | implemented |
+| Regime detection            |      |  ✓  |  ✓   | implemented |
+| Walk-forward analysis       |      |     |      | **not implemented** |
+| Benchmark comparison        |      |     |      | **not implemented** |
+| Monte Carlo bootstrap       |      |     |      | **not implemented** |
+| Structured JSON logs        |      |     |      | **not implemented** |
+| Offline Docker image        |      |     |      | Docker Compose is in the repo; not a paid extra |
+| Team seats                  |      |     |      | **not implemented** (machine binding is local/soft) |
+
+`nae research regime` and `nae research correlations` require Pro (or Team).
 
 **Licensing gates paid features only.** Broker execution is *always*
-controlled by your `config.yaml` — a license (or the absence of one)
-will never turn on or off the `execute` command set. That separation
-is enforced by a dedicated test (`test_license_never_affects_execution_allowed`)
-and is a deliberate compliance boundary.
+controlled by your `config.yaml` (`nae.mode`, `execution_enabled`, broker
+keys) — a license (or the absence of one) will never turn on or off the
+`execute` command set. That separation is enforced by
+`test_license_never_affects_execution_allowed`.
 
 ## Activating a license
 

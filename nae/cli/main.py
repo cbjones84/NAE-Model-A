@@ -21,6 +21,15 @@ from nae.core import licensing as _lic
 from nae.core.license_keys import get_trusted_public_keys, has_any_trusted_key
 
 
+def _require_licensed_feature(name: str) -> None:
+    from nae.core.feature_gates import get_gates
+    try:
+        get_gates().require_feature(name)
+    except (_lic.FeatureNotLicensedError, NotImplementedError) as e:
+        click.echo(f"\n  [X] {e}", err=True)
+        sys.exit(2)
+
+
 def _setup_logging(level: str = "INFO") -> None:
     log_dir = Path("./logs")
     log_dir.mkdir(exist_ok=True)
@@ -37,12 +46,15 @@ def _setup_logging(level: str = "INFO") -> None:
 @click.group()
 @click.version_option(version=__version__, prog_name=__product__)
 def cli():
-    """NAE Platform — AI-Assisted Trading Research Infrastructure
+    """NAE Platform — Trading Research Toolkit
 
-    Your AI. Your Control. Your Privacy.
+    Your data. Your control. Your privacy.
 
-    NAE is a research and analysis tool. It does NOT provide
-    financial advice or trade recommendations.
+    Statistical research and backtesting on your machine.
+    NAE is not an AI advisor and does NOT provide financial advice
+    or trade recommendations. Market data defaults to Yahoo Finance
+    (internet required). Broker APIs are used only if you enable
+    execution in full mode.
     """
     pass
 
@@ -56,6 +68,35 @@ def init(target_dir: str):
     from nae.core.disclaimer import FIRST_RUN_NOTICE
 
     click.echo(FIRST_RUN_NOTICE)
+    click.echo("")
+    from nae.core.disclaimer import (
+        LEGAL_FILENAMES,
+        find_legal_dir,
+        legal_excerpt,
+    )
+
+    legal_dir = find_legal_dir()
+    click.echo("  Full legal documents (read these before accepting):")
+    if legal_dir:
+        for name in LEGAL_FILENAMES:
+            path = legal_dir / name
+            click.echo(f"    {name}: {path}")
+        click.echo("")
+        for name in LEGAL_FILENAMES:
+            path = legal_dir / name
+            click.echo(f"  --- excerpt: {name} ---")
+            for line in legal_excerpt(path).splitlines():
+                click.echo(f"  {line}")
+            click.echo("")
+    else:
+        click.echo("    legal/TERMS_OF_SERVICE.md")
+        click.echo("    legal/RISK_DISCLOSURE.md")
+        click.echo("    (files not found next to this install; locate them in the repo)")
+        click.echo("")
+    click.echo(
+        "  Typing I ACCEPT confirms you had the chance to open those files."
+    )
+    click.echo("  Init does not display the full documents.")
     click.echo("")
     accepted = click.prompt(
         "  Do you accept these terms? Type 'I ACCEPT' to continue",
@@ -82,7 +123,11 @@ def init(target_dir: str):
 # ─────────────────────────────────────────────────────────
 
 nae:
-  mode: research_only          # research_only | backtest | full
+  # Enforced at runtime (not display-only):
+  #   research_only — fetch, analysis, patterns, correlations, regime, CSV import
+  #   backtest      — plus strategy backtests
+  #   full          — plus user-controlled execution (still requires execution_enabled)
+  mode: research_only
   execution_enabled: false     # Must be explicitly set to true
 
 broker:
@@ -150,7 +195,10 @@ def status():
 
     # Mode
     click.echo(f"  Mode:       {gates.mode}")
-    click.echo(f"  Execution:  {'enabled' if gates.execution_allowed else 'disabled'}")
+    exec_label = "enabled" if gates.execution_allowed else "disabled"
+    if gates.mode != "full":
+        exec_label += f" (blocked by mode={gates.mode}; need mode=full)"
+    click.echo(f"  Execution:  {exec_label}")
     click.echo(f"  Paper mode: {'yes' if gates.paper_mode else 'no (LIVE)'}")
 
     # Broker
@@ -176,9 +224,10 @@ def status():
 
 @cli.group()
 def research():
-    """AI-assisted market research and analysis.
+    """Market research and statistical analysis.
 
     All output is raw research data — not trade recommendations.
+    Live OHLCV is fetched from Yahoo Finance (internet required).
     """
     pass
 
@@ -245,13 +294,8 @@ def research_correlations(assets: str, period: str):
     _setup_logging()
     from nae.agents.research_engine import ResearchEngine
     from nae.core.disclaimer import SHORT_DISCLAIMER
-    from nae.core.feature_gates import get_gates
 
-    try:
-        get_gates().require_feature("correlation_matrix")
-    except _lic.FeatureNotLicensedError as e:
-        click.echo(f"\n  [X] {e}", err=True)
-        sys.exit(2)
+    _require_licensed_feature("correlation_matrix")
 
     symbols = [s.strip().upper() for s in assets.split(",")]
     engine = ResearchEngine()
@@ -275,11 +319,13 @@ def research_correlations(assets: str, period: str):
 @click.option("--asset", required=True, help="Ticker symbol")
 @click.option("--period", default="1y", help="Data period")
 def research_regime(asset: str, period: str):
-    """Detect the current market regime for a symbol."""
+    """Detect the current market regime for a symbol (Pro)."""
     _setup_logging()
     from nae.agents.research_engine import ResearchEngine
     from nae.tools.analysis.regime_detection import RegimeDetector
     from nae.core.disclaimer import SHORT_DISCLAIMER
+
+    _require_licensed_feature("regime_detection_full")
 
     engine = ResearchEngine()
     detector = RegimeDetector()
@@ -297,6 +343,42 @@ def research_regime(asset: str, period: str):
         click.echo(f"    {k:30s} {v}")
     click.echo(f"\n  ⚠ {analysis.note}")
     click.echo(f"  ⚠ {SHORT_DISCLAIMER}")
+
+
+@research.command("import")
+@click.option("--file", "filepath", required=True, type=click.Path(exists=True, dir_okay=False))
+@click.option("--symbol", required=True, help="Ticker label for the imported series")
+def research_import(filepath: str, symbol: str):
+    """Import OHLCV from a user CSV (offline; no Yahoo Finance call).
+
+    Expected columns: date, open, high, low, close, volume.
+    """
+    _setup_logging()
+    from nae.agents.research_engine import ResearchEngine
+    from nae.core.disclaimer import SHORT_DISCLAIMER
+    from nae.tools.data import import_csv
+
+    _require_licensed_feature("csv_import")
+
+    click.echo(f"\n  Importing {filepath} as {symbol}...")
+    try:
+        points = import_csv(filepath, symbol)
+    except Exception as e:
+        click.echo(f"  Error: {e}", err=True)
+        sys.exit(1)
+
+    if not points:
+        click.echo("  No rows imported.")
+        sys.exit(1)
+
+    engine = ResearchEngine()
+    metrics = engine.compute_metrics(points)
+    click.echo(f"  Rows:        {len(points)}")
+    click.echo(f"  First bar:   {points[0].timestamp}")
+    click.echo(f"  Last bar:    {points[-1].timestamp}")
+    if "price_change_pct" in metrics:
+        click.echo(f"  Change:      {metrics['price_change_pct']:.2f}%")
+    click.echo(f"\n  ⚠ {SHORT_DISCLAIMER}")
 
 
 # ── STRATEGY ────────────────────────────────────────────────────
@@ -394,12 +476,18 @@ def backtest_run(strategy_path: str, symbols: str, start_date, end_date, capital
     from nae.agents.strategy_validator import StrategyValidator
     from nae.tools.backtesting.engine import BacktestResult
     from nae.core.disclaimer import REPORT_DISCLAIMER
+    from nae.core.feature_gates import get_gates
+
+    try:
+        get_gates().require_backtest()
+    except PermissionError as e:
+        click.echo(f"\n  [X] {e}", err=True)
+        sys.exit(1)
 
     symbol_list = [s.strip().upper() for s in symbols.split(",")]
     validator = StrategyValidator()
 
     if len(symbol_list) > 1:
-        from nae.core.feature_gates import get_gates
         try:
             get_gates().require_feature("backtest_multi_symbol")
         except _lic.FeatureNotLicensedError as e:
@@ -461,8 +549,9 @@ def backtest_run(strategy_path: str, symbols: str, start_date, end_date, capital
 def execute():
     """User-controlled order execution.
 
-    Execution is DISABLED by default. You must explicitly enable it
-    in config.yaml. All orders require your confirmation.
+    Requires nae.mode: full AND execution_enabled: true AND a broker.
+    Disabled by default. All orders require your confirmation unless
+    you turn that off in config.
     """
     pass
 
@@ -473,10 +562,19 @@ def execute_enable():
     click.echo("""
   ⚠ Execution is disabled by default for your protection.
 
+  Mode is enforced. research_only and backtest cannot place orders
+  even if execution_enabled is true.
+
   To enable, edit config.yaml and set:
 
     nae:
+      mode: full
       execution_enabled: true
+
+    broker:
+      name: tradier               # or alpaca
+      api_key: your_key
+      sandbox: true
 
     execution:
       paper_mode: true            # Start with paper trading
@@ -515,6 +613,8 @@ def execute_order(asset: str, side: str, qty: int, order_type: str, price: float
 
         result = adapter.confirm_and_submit(order)
         click.echo(f"\n  Status: {result.status.value}")
+        if result.fill_price:
+            click.echo(f"  Fill: ${result.fill_price:,.2f}")
         if result.broker_order_id:
             click.echo(f"  Broker ID: {result.broker_order_id}")
 
@@ -528,20 +628,28 @@ def execute_order(asset: str, side: str, qty: int, order_type: str, price: float
 
 @execute.command("status")
 def execute_status():
-    """Show order history for this session."""
+    """Show order history from the execution audit log (cross-process)."""
     _setup_logging("WARNING")
     from nae.agents.execution_adapter import ExecutionAdapter
 
     adapter = ExecutionAdapter()
     orders = adapter.get_order_history()
+    log_path = Path("./logs") / "execution_audit.jsonl"
 
     if not orders:
-        click.echo("\n  No orders in this session.")
+        click.echo(f"\n  No orders in {log_path}.")
         return
 
-    click.echo(f"\n  Orders ({len(orders)}):")
+    click.echo(f"\n  Orders ({len(orders)}) from {log_path}:")
     for o in orders:
-        click.echo(f"    {o['order_id']}  {o['side']} {o['quantity']} {o['symbol']}  [{o['status']}]")
+        oid = o.get("order_id", "?")
+        side = o.get("side", "?")
+        qty = o.get("quantity", "?")
+        sym = o.get("symbol", "?")
+        status = o.get("status", "?")
+        fill = o.get("fill_price")
+        extra = f"  fill=${fill}" if fill not in (None, "") else ""
+        click.echo(f"    {oid}  {side} {qty} {sym}  [{status}]{extra}")
 
 
 # ── CONFIG ──────────────────────────────────────────────────────
