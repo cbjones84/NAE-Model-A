@@ -11,12 +11,15 @@
 # ═══════════════════════════════════════════════════════════════
 
 nae:
-  # research_only — data fetching, analysis, and pattern detection
-  # backtest     — adds backtesting of user-defined strategies
-  # full         — adds user-controlled execution (requires execution_enabled)
+  # Enforced at runtime (not display-only):
+  #   research_only — data fetching, analysis, patterns, CSV import
+  #   backtest      — adds backtesting of user-defined strategies
+  #   full          — adds user-controlled execution (also requires execution_enabled)
   mode: research_only
 
-  # Execution is OFF by default. You must explicitly enable it.
+  # Execution is OFF by default. You must explicitly enable it AND set
+  # mode: full. research_only / backtest cannot place orders even when
+  # this flag is true.
   # By setting this to true, you accept full responsibility for
   # all trades executed through NAE.
   execution_enabled: false

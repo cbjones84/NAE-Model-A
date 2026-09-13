@@ -35,11 +35,11 @@ models/
 .DS_Store
 Thumbs.db
 
-# Logs & runtime data
-logs/
+# Logs & runtime workspace dirs (repo-root only; do not hide nae/tools/data)
+/logs/
 *.log
-data/
-reports/
+/data/
+/reports/
 
 # User config (template ships, user copy does not)
 config.yaml

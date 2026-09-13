@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nae-platform"
 version = "1.0.0"
-description = "AI-Assisted Trading Research Infrastructure — Your AI, Your Control, Your Privacy"
+description = "Self-hosted trading research toolkit — statistics, backtests, optional broker relay"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Proprietary"}

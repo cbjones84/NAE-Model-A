@@ -236,12 +236,13 @@ class ExecutionAdapter:
         order.user_confirmed = True
 
         if paper:
+            fill_price = self._paper_fill_price(order)
             order.status = OrderStatus.FILLED
-            order.fill_price = order.price or 0.0
+            order.fill_price = fill_price
             order.filled_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
             order.broker_order_id = f"PAPER-{order.order_id}"
             self._audit_log("paper_order_filled", order.to_dict())
-            logger.info(f"[PAPER] Order filled: {order.order_id}")
+            logger.info(f"[PAPER] Order filled: {order.order_id} @ {fill_price}")
         else:
             try:
                 broker = self._get_broker()
@@ -261,9 +262,79 @@ class ExecutionAdapter:
 
         return order
 
+    def _paper_fill_price(self, order: Order) -> float:
+        """Resolve a non-zero paper fill. Never silently fill at $0."""
+        if order.price is not None and order.price > 0:
+            return float(order.price)
+        mark = self._paper_mark_price(order.symbol)
+        if mark is not None and mark > 0:
+            return float(mark)
+        raise ValueError(
+            "Paper market orders need a price. Pass --price, or ensure "
+            "Yahoo Finance data is available so NAE can use the last close. "
+            "Orders are not filled at $0."
+        )
+
+    def _paper_mark_price(self, symbol: str) -> Optional[float]:
+        try:
+            from nae.tools.data import last_close
+            return last_close(symbol)
+        except Exception as e:
+            logger.warning("Could not fetch mark price for paper fill: %s", e)
+            return None
+
+    @staticmethod
+    def _status_from_event(event: str, current: Optional[str] = None) -> str:
+        mapping = {
+            "order_created": "pending_confirmation",
+            "paper_order_filled": "filled",
+            "order_submitted": "submitted",
+            "order_cancelled_by_user": "cancelled",
+            "order_cancelled": "cancelled",
+            "order_failed": "failed",
+        }
+        return mapping.get(event, current or "unknown")
+
+    def _load_audit_orders(self) -> List[Dict[str, Any]]:
+        """Rebuild order state from logs/execution_audit.jsonl (cross-process)."""
+        log_file = self._log_dir / "execution_audit.jsonl"
+        if not log_file.exists():
+            return []
+        by_id: Dict[str, Dict[str, Any]] = {}
+        with open(log_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                oid = entry.get("order_id")
+                if not oid:
+                    continue
+                merged = {**by_id.get(oid, {}), **entry}
+                event = entry.get("event", "")
+                merged["status"] = self._status_from_event(
+                    event, merged.get("status")
+                )
+                by_id[oid] = merged
+        orders = list(by_id.values())
+        orders.sort(key=lambda o: o.get("timestamp") or o.get("created_at") or "")
+        return orders
+
     def get_order_history(self) -> List[Dict[str, Any]]:
-        """Return all orders placed in this session."""
-        return [o.to_dict() for o in self._order_history]
+        """Return orders from the audit log, overlaying this process's session."""
+        by_id: Dict[str, Dict[str, Any]] = {}
+        for row in self._load_audit_orders():
+            oid = row.get("order_id")
+            if oid:
+                by_id[str(oid)] = row
+        for order in self._order_history:
+            by_id[order.order_id] = order.to_dict()
+        orders = list(by_id.values())
+        orders.sort(key=lambda o: o.get("timestamp") or o.get("created_at") or "")
+        return orders
 
     def cancel_order(self, order_id: str) -> bool:
         """Cancel a pending order."""

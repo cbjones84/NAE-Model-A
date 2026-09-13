@@ -7,9 +7,10 @@ changing their configuration file.
 """
 
 import copy
-import yaml
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
+
+import yaml
 
 if TYPE_CHECKING:
     from nae.core.licensing import VerifiedLicense
@@ -112,8 +113,14 @@ class FeatureGates:
 
     # ── Gate checks ─────────────────────────────────────────────
 
+    VALID_MODES = ("research_only", "backtest", "full")
+
     @property
     def execution_allowed(self) -> bool:
+        """True when the user set ``nae.execution_enabled``. Does not
+        incorporate mode — call :meth:`require_execution` for the full
+        ladder (mode must be ``full`` *and* this flag *and* a broker).
+        """
         return bool(self.get("nae.execution_enabled", False))
 
     @property
@@ -130,10 +137,36 @@ class FeatureGates:
 
     @property
     def mode(self) -> str:
-        return str(self.get("nae.mode", "research_only"))
+        raw = str(self.get("nae.mode", "research_only") or "research_only")
+        return raw if raw in self.VALID_MODES else "research_only"
+
+    @property
+    def backtest_allowed(self) -> bool:
+        """Backtests are available in ``backtest`` and ``full`` modes."""
+        return self.mode in ("backtest", "full")
+
+    def require_backtest(self) -> None:
+        """Raise if the configured mode does not include backtesting."""
+        if not self.backtest_allowed:
+            raise PermissionError(
+                "Backtesting is not available in research_only mode. "
+                "Set 'nae.mode: backtest' or 'nae.mode: full' in config.yaml. "
+                "research_only is limited to data fetch and analysis."
+            )
 
     def require_execution(self) -> None:
-        """Raise if execution is not explicitly enabled by the user."""
+        """Raise unless mode is full, execution is enabled, and a broker is set.
+
+        ``research_only`` and ``backtest`` cannot place orders even when
+        ``nae.execution_enabled`` is true. That flag is necessary but not
+        sufficient; mode is the first gate.
+        """
+        if self.mode != "full":
+            raise PermissionError(
+                "Execution requires nae.mode: full in config.yaml. "
+                f"Current mode is {self.mode!r}. research_only and backtest "
+                "modes cannot place orders, even if execution_enabled is true."
+            )
         if not self.execution_allowed:
             raise PermissionError(
                 "Execution is disabled. Set 'nae.execution_enabled: true' "
@@ -151,7 +184,7 @@ class FeatureGates:
         if not self.confirmation_required:
             return True
         print(f"\n{'=' * 60}")
-        print(f"  CONFIRMATION REQUIRED")
+        print("  CONFIRMATION REQUIRED")
         print(f"  {action_description}")
         print(f"{'=' * 60}")
         response = input("  Type 'yes' to confirm: ").strip().lower()
@@ -161,11 +194,11 @@ class FeatureGates:
     #
     # IMPORTANT DESIGN NOTE
     # ---------------------
-    # Licensing gates *paid features* (walk-forward, benchmarks, etc.).
-    # It MUST NOT influence `execution_allowed`. Execution is controlled
-    # exclusively by the user's config.yaml + require_execution(). This
-    # separation is deliberate: even a totally broken license subsystem
-    # must never be able to flip execution on or off. Do not couple them.
+    # Licensing gates *implemented* paid features (multi-symbol backtest,
+    # correlation matrix, regime detection). It MUST NOT influence
+    # `execution_allowed` or mode. Execution is controlled exclusively by
+    # config.yaml (mode + execution_enabled + broker) via require_execution().
+    # Do not couple licensing to execution.
 
     def attach_license(self, license_obj: Optional["VerifiedLicense"]) -> None:
         """Attach a verified license to this gate instance. Passing
@@ -199,15 +232,20 @@ class FeatureGates:
         return self._license.allows_feature(feature_name)
 
     def require_feature(self, feature_name: str) -> None:
-        """Raise :class:`FeatureNotLicensedError` if the current tier
-        does not include ``feature_name``.
-        """
-        from nae.core.licensing import FeatureNotLicensedError
+        """Raise if the feature is unimplemented or not in the current tier."""
+        from nae.core.licensing import (
+            UNIMPLEMENTED_FEATURES,
+            FeatureNotLicensedError,
+        )
+        if feature_name in UNIMPLEMENTED_FEATURES:
+            raise NotImplementedError(
+                f"Feature {feature_name!r} is not implemented in this version "
+                f"of NAE. See docs/licensing.md for the implemented feature map."
+            )
         if not self.feature_allowed(feature_name):
             raise FeatureNotLicensedError(
                 f"Feature {feature_name!r} is not included in the {self.tier} "
-                f"tier. Run 'nae license' to see your tier, or upgrade at "
-                f"https://nae.platform/pricing (contact support for details)."
+                f"tier. Run 'nae license show' to see your tier."
             )
 
 
